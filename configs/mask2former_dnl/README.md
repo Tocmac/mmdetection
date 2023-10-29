@@ -4,26 +4,6 @@
 
 <!-- [ALGORITHM] -->
 
-# train
-python ./tools/train.py configs/polyphonic_image/poly_r50_cityscapes_2x.py
-
-python ./tools/train.py configs/polyphonic_video/poly_r50_cityscapes_1x.py --work-dir /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230718/ --gpu-ids 2
-
-## multi card
-bash ./tools/dist_train.sh configs/mask2former/mask2former_r50_8xb2-lsj-50e_DSOD2.0_10.py 4 --work-dir saved_logs/test/
-
-## nohup
-nohup bash ./tools/dist_train_mine.sh configs/polyphonic_image/poly_r50_cityscapes_2x.py 6 --seed 0 --work-dir /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230717_image/ > /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230717_image/output.txt 2>&1 &
-
-nohup bash ./tools/dist_train_mine.sh configs/polyphonic_video/poly_r50_cityscapes_1x.py 6 --seed 0 --work-dir /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230718_video/ > /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230718_video/output.txt 2>&1 &
-
-# test
-python tools/test.py --config configs/queryinst_mine/queryinst_r50_fpn_mstrain_480-800_3x_coco.py --checkpoint saved_logs/epoch_24.pth --show-dir show_results
-
-python demo/image_demo.py --img /data/home/wangxu/datasets/121/image/21.jpg --config configs/queryinst_mine/queryinst_r50_fpn_mstrain_480-800_3x_coco.py --checkpoint saved_logs/epoch_24.pth 
-
-
-
 ## Abstract
 
 Image segmentation is about grouping pixels with different semantics, e.g., category or instance membership, where each choice of semantics defines a task. While only the semantics of each task differ, current research focuses on designing specialized architectures for each task. We present Masked-attention Mask Transformer (Mask2Former), a new architecture capable of addressing any image segmentation task (panoptic, instance or semantic). Its key components include masked attention, which extracts localized features by constraining cross-attention within predicted mask regions. In addition to reducing the research effort by at least three times, it outperforms the best specialized architectures by a significant margin on four popular datasets. Most notably, Mask2Former sets a new state-of-the-art for panoptic segmentation (57.8 PQ on COCO), instance segmentation (50.1 AP on COCO) and semantic segmentation (57.7 mIoU on ADE20K).
