@@ -25,6 +25,16 @@ data_preprocessor = dict(
     batch_augments=batch_augments)
 model = dict(
     data_preprocessor=data_preprocessor,
+    backbone=dict(
+        type='ResNetDNL',
+        depth=50,
+        num_stages=4,
+        out_indices=(0, 1, 2, 3),
+        frozen_stages=-1,
+        norm_cfg=dict(type='BN', requires_grad=False),
+        norm_eval=True,
+        style='pytorch',
+        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     panoptic_head=dict(
         num_things_classes=num_things_classes,
         num_stuff_classes=num_stuff_classes,
