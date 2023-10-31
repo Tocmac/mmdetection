@@ -5,7 +5,7 @@
 <!-- [ALGORITHM] -->
 
 # train
-python ./tools/train.py configs/polyphonic_image/poly_r50_cityscapes_2x.py
+python ./tools/train.py configs/mask2former/mask2former_r50_8xb2-lsj-50e_DSOD2.0_10.py --work-dir saved_logs/test/
 
 python ./tools/train.py configs/polyphonic_video/poly_r50_cityscapes_1x.py --work-dir /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230718/ --gpu-ids 2
 
