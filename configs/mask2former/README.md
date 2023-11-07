@@ -11,11 +11,10 @@ python ./tools/train.py configs/polyphonic_video/poly_r50_cityscapes_1x.py --wor
 
 ## multi card
 bash ./tools/dist_train.sh configs/mask2former_dnl/mask2former_r50_dnl_8xb2-lsj-50e_DSOD2.0_10.py 4 --work-dir saved_logs/test/
+bash ./tools/dist_train.sh configs/mask2former_dnl/mask2former_r50_dnl_8xb2-lsj-50e_DSOD2.0.py 4 --work-dir saved_logs/DSOD2.0/mask2former_res50_dnl/
 
 ## nohup
-nohup bash ./tools/dist_train_mine.sh configs/polyphonic_image/poly_r50_cityscapes_2x.py 6 --seed 0 --work-dir /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230717_image/ > /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230717_image/output.txt 2>&1 &
-
-nohup bash ./tools/dist_train_mine.sh configs/polyphonic_video/poly_r50_cityscapes_1x.py 6 --seed 0 --work-dir /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230718_video/ > /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230718_video/output.txt 2>&1 &
+nohup bash ./tools/dist_train.sh configs/mask2former_dnl/mask2former_r50_dnl_8xb2-lsj-50e_DSOD2.0.py 4 --work-dir saved_logs/DSOD2.0/mask2former_res50_dnl/ > /data/home/wangxu/code/mmdetection_new/saved_logs/DSOD2.0/mask2former_res50_dnl/output_1107.txt 2>&1 &
 
 # test
 python tools/test.py --config configs/queryinst_mine/queryinst_r50_fpn_mstrain_480-800_3x_coco.py --checkpoint saved_logs/epoch_24.pth --show-dir show_results

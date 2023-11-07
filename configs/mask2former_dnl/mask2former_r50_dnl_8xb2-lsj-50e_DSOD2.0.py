@@ -102,7 +102,8 @@ test_pipeline = [
 # data_root = 'data/coco/'
 # dataset settings
 dataset_type = 'CocoDataset'
-data_root = '/data/home/wangxu/datasets/DSOD2.0/10/'
+# data_root = '/data/home/wangxu/datasets/DSOD2.0/10/'
+data_root = '/data/home/wangxu/datasets/DSOD2.0/VDSOD2.0/'
 # data_root_test = '/data/home/wangxu/datasets/SCD/LSCD/coco_style_oneclass/'
 metainfo = {
   'classes': ('surface', ),
@@ -123,8 +124,8 @@ train_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         metainfo=metainfo,
-        ann_file='output_carton_train/coco_data/coco_annotations.json',
-        data_prefix=dict(img='output_surface_train/coco_data/'),
+        ann_file='annotations/carton_train_coco_annotations.json',
+        data_prefix=dict(img='train/'),
         filter_cfg=dict(filter_empty_gt=True, min_size=32),
         pipeline=train_pipeline,
         backend_args=backend_args))
@@ -138,8 +139,8 @@ val_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         metainfo=metainfo,
-        ann_file='output_carton_train/coco_data/coco_annotations.json',
-        data_prefix=dict(img='output_surface_train/coco_data/'),
+        ann_file='annotations/carton_val_coco_annotations.json',
+        data_prefix=dict(img='val/'),
         test_mode=True,
         pipeline=test_pipeline,
         backend_args=backend_args))
@@ -148,7 +149,7 @@ test_dataloader = val_dataloader
 val_evaluator = dict(
     _delete_=True,
     type='CocoMetric',
-    ann_file=data_root + 'output_carton_train/coco_data/coco_annotations.json',
+    ann_file=data_root + 'annotations/carton_val_coco_annotations.json',
     metric=['bbox', 'segm'],
     format_only=False,
     backend_args={{_base_.backend_args}})
@@ -156,7 +157,7 @@ test_evaluator = val_evaluator
 
 
 # learning policy
-max_iters = 1000
+max_iters = 368750
 param_scheduler = dict(
     type='MultiStepLR',
     begin=0,
@@ -168,7 +169,7 @@ param_scheduler = dict(
 # Before 365001th iteration, we do evaluation every 5000 iterations.
 # After 365000th iteration, we do evaluation every 368750 iterations,
 # which means that we do evaluation at the end of training.
-interval = 100
+interval = 5000
 dynamic_intervals = [(max_iters // interval * interval + 1, max_iters)]
 train_cfg = dict(
     type='IterBasedTrainLoop',

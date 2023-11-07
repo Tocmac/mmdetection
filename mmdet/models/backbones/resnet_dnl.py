@@ -8,8 +8,8 @@ from mmengine.model import BaseModule
 from torch.nn.modules.batchnorm import _BatchNorm
 
 from mmdet.registry import MODELS
-from ..layers import ResLayer
-
+from ..layers import ResLayer, ResLayerDNL
+from mmdet.ops import ContextBlock, NonLocal2dGc, GeneralizedAttention, NonLocal2D
 
 class BasicBlock(BaseModule):
     expansion = 1
@@ -108,7 +108,7 @@ class Bottleneck(BaseModule):
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
                  dcn=None,
-                 plugins=None,
+                 plugins=None,      # **
                  init_cfg=None):
         """Bottleneck block for ResNet.
 
@@ -302,6 +302,216 @@ class Bottleneck(BaseModule):
         return out
 
 
+class BottleneckDNL(BaseModule):
+    expansion = 4
+
+    def __init__(self,
+                 inplanes,
+                 planes,
+                 stride=1,
+                 dilation=1,
+                 downsample=None,
+                 style='pytorch',
+                 with_cp=False,
+                 conv_cfg=None,
+                 norm_cfg=dict(type='BN'),
+                 dcn=None,
+                 gcb=None,  # **
+                 gen_attention=None,    # **
+                 nlb=None,  # **
+                 nlgcb=None,    # **
+                 non_inplace=False,     # **
+                 init_cfg=None):
+        """BottleneckDNL block for ResNetDNL.
+        If style is "pytorch", the stride-two layer is the 3x3 conv layer,
+        if it is "caffe", the stride-two layer is the first 1x1 conv layer.
+        """
+        super(BottleneckDNL, self).__init__(init_cfg)
+        assert style in ['pytorch', 'caffe']
+        assert dcn is None or isinstance(dcn, dict)
+        assert gcb is None or isinstance(gcb, dict)
+        assert gen_attention is None or isinstance(gen_attention, dict)
+        assert nlb is None or isinstance(nlb, dict)
+        assert nlgcb is None or isinstance(nlgcb, dict)
+
+        self.inplanes = inplanes
+        self.planes = planes
+        self.stride = stride
+        self.dilation = dilation
+        self.style = style
+        self.with_cp = with_cp
+        self.conv_cfg = conv_cfg
+        self.norm_cfg = norm_cfg
+        self.dcn = dcn
+        self.with_dcn = dcn is not None
+        self.gcb = gcb
+        self.with_gcb = gcb is not None
+        self.gen_attention = gen_attention
+        self.with_gen_attention = gen_attention is not None
+        self.nlb = nlb
+        self.with_nlb = nlb is not None
+        self.nlgcb = nlgcb
+        self.with_nlgcb = nlgcb is not None
+
+        if self.style == 'pytorch':
+            self.conv1_stride = 1
+            self.conv2_stride = stride
+        else:
+            self.conv1_stride = stride
+            self.conv2_stride = 1
+
+        self.norm1_name, norm1 = build_norm_layer(norm_cfg, planes, postfix=1)
+        self.norm2_name, norm2 = build_norm_layer(norm_cfg, planes, postfix=2)
+        self.norm3_name, norm3 = build_norm_layer(
+            norm_cfg, planes * self.expansion, postfix=3)
+
+        self.conv1 = build_conv_layer(
+            conv_cfg,
+            inplanes,
+            planes,
+            kernel_size=1,
+            stride=self.conv1_stride,
+            bias=False)
+        self.add_module(self.norm1_name, norm1)
+        fallback_on_stride = False
+        self.with_modulated_dcn = False
+        if self.with_dcn:
+            fallback_on_stride = dcn.pop('fallback_on_stride', False)
+            self.with_modulated_dcn = dcn.pop('modulated', False)
+        if not self.with_dcn or fallback_on_stride:
+            self.conv2 = build_conv_layer(
+                conv_cfg,
+                planes,
+                planes,
+                kernel_size=3,
+                stride=self.conv2_stride,
+                padding=dilation,
+                dilation=dilation,
+                bias=False)
+        else:
+            assert conv_cfg is None, 'conv_cfg must be None for DCN'
+            self.deformable_groups = dcn.pop('deformable_groups', 1)
+            if not self.with_modulated_dcn:
+                conv_op = DeformConv
+                offset_channels = 18
+            else:
+                conv_op = ModulatedDeformConv
+                offset_channels = 27
+            self.conv2_offset = nn.Conv2d(
+                planes,
+                self.deformable_groups * offset_channels,
+                kernel_size=3,
+                stride=self.conv2_stride,
+                padding=dilation,
+                dilation=dilation)
+            self.conv2 = conv_op(
+                planes,
+                planes,
+                kernel_size=3,
+                stride=self.conv2_stride,
+                padding=dilation,
+                dilation=dilation,
+                deformable_groups=self.deformable_groups,
+                bias=False)
+        self.add_module(self.norm2_name, norm2)
+        self.conv3 = build_conv_layer(
+            conv_cfg,
+            planes,
+            planes * self.expansion,
+            kernel_size=1,
+            bias=False)
+        self.add_module(self.norm3_name, norm3)
+
+        self.relu = nn.ReLU(inplace=not non_inplace)
+        self.downsample = downsample
+
+        if self.with_gcb:
+            gcb_inplanes = planes * self.expansion
+            self.context_block = ContextBlock(inplanes=gcb_inplanes, **gcb)
+
+        # gen_attention
+        if self.with_gen_attention:
+            self.gen_attention_block = GeneralizedAttention(
+                planes, **gen_attention)
+
+        if self.with_nlb:
+            nlb_inplanes = planes * self.expansion
+            self.nonlocal_block = NonLocal2D(in_channels=nlb_inplanes, **nlb)
+
+        if self.with_nlgcb:
+            nlgcb_inplanes = planes * self.expansion
+            self.nl_gc_block = NonLocal2dGc(inplanes = nlgcb_inplanes, **nlgcb)
+
+        self.non_inplace = non_inplace
+
+    @property
+    def norm1(self):
+        return getattr(self, self.norm1_name)
+
+    @property
+    def norm2(self):
+        return getattr(self, self.norm2_name)
+
+    @property
+    def norm3(self):
+        return getattr(self, self.norm3_name)
+
+    def forward(self, x):
+
+        def _inner_forward(x):
+            identity = x
+
+            out = self.conv1(x)
+            out = self.norm1(out)
+            out = self.relu(out)
+
+            if not self.with_dcn:
+                out = self.conv2(out)
+            elif self.with_modulated_dcn:
+                offset_mask = self.conv2_offset(out)
+                offset = offset_mask[:, :18 * self.deformable_groups, :, :]
+                mask = offset_mask[:, -9 * self.deformable_groups:, :, :]
+                mask = mask.sigmoid()
+                out = self.conv2(out, offset, mask)
+            else:
+                offset = self.conv2_offset(out)
+                out = self.conv2(out, offset)
+            out = self.norm2(out)
+            out = self.relu(out)
+
+            if self.with_gen_attention:
+                out = self.gen_attention_block(out)
+
+            out = self.conv3(out)
+            out = self.norm3(out)
+
+            if self.downsample is not None:
+                identity = self.downsample(x)
+
+            if self.non_inplace:
+                out = out + identity
+            else:
+                out += identity
+
+            if self.with_gcb:
+                out = self.context_block(out)
+            if self.with_nlgcb:
+                out = self.nl_gc_block(out)
+            if self.with_nlb:
+                out = self.nonlocal_block(out)
+
+            return out
+
+        if self.with_cp and x.requires_grad:
+            out = cp.checkpoint(_inner_forward, x)
+        else:
+            out = _inner_forward(x)
+
+        out = self.relu(out)
+
+        return out
+
+
 @MODELS.register_module()
 class ResNetDNL(BaseModule):
     """ResNet backbone.
@@ -361,7 +571,7 @@ class ResNetDNL(BaseModule):
     arch_settings = {
         18: (BasicBlock, (2, 2, 2, 2)),
         34: (BasicBlock, (3, 4, 6, 3)),
-        50: (Bottleneck, (3, 4, 6, 3)),
+        50: (BottleneckDNL, (3, 4, 6, 3)),
         101: (Bottleneck, (3, 4, 23, 3)),
         152: (Bottleneck, (3, 8, 36, 3))
     }
@@ -384,10 +594,19 @@ class ResNetDNL(BaseModule):
                  norm_eval=True,
                  dcn=None,
                  stage_with_dcn=(False, False, False, False),
-                 plugins=None,
+                 gcb=None,  # **
+                 stage_with_gcb=((), (), (), ()),  # **
+                 nlgcb=None,  # **
+                 stage_with_nlgcb=((), (), (), ()),  # **
+                 gen_attention=None,  # **
+                 stage_with_gen_attention=((), (), (), ()),  # **
+                 nlb=None,  # **
+                 stage_with_nlb=((), (), (), ()),  # **
+                 plugins=None,  #
                  with_cp=False,
                  zero_init_residual=True,
-                 pretrained=None,
+                 pretrained=None,   #
+                 non_inplace=False,  # **
                  init_cfg=None):
         super(ResNetDNL, self).__init__(init_cfg)
         self.zero_init_residual = zero_init_residual
@@ -450,6 +669,22 @@ class ResNetDNL(BaseModule):
         if dcn is not None:
             assert len(stage_with_dcn) == num_stages
         self.plugins = plugins
+
+        self.gen_attention = gen_attention
+        self.gcb = gcb
+        self.stage_with_gcb = stage_with_gcb
+        if gcb is not None:
+            assert len(stage_with_gcb) == num_stages
+        self.nlgcb = nlgcb
+        self.stage_with_nlgcb = stage_with_nlgcb
+        if nlgcb is not None:
+            assert len(stage_with_nlgcb) == num_stages
+        self.nlb = nlb
+        if nlb is not None:
+            assert len(stage_with_nlb) == num_stages
+        self.zero_init_residual = zero_init_residual
+        self.non_inplace = non_inplace
+
         self.block, stage_blocks = self.arch_settings[depth]
         self.stage_blocks = stage_blocks[:num_stages]
         self.inplanes = stem_channels
@@ -461,26 +696,34 @@ class ResNetDNL(BaseModule):
             stride = strides[i]
             dilation = dilations[i]
             dcn = self.dcn if self.stage_with_dcn[i] else None
+            gcb = self.gcb if self.stage_with_gcb[i] else None
             if plugins is not None:
                 stage_plugins = self.make_stage_plugins(plugins, i)
             else:
                 stage_plugins = None
             planes = base_channels * 2**i
-            res_layer = self.make_res_layer(
-                block=self.block,
-                inplanes=self.inplanes,
-                planes=planes,
-                num_blocks=num_blocks,
+            res_layer = make_res_layer(
+                self.block,
+                self.inplanes,
+                planes,
+                num_blocks,
                 stride=stride,
                 dilation=dilation,
                 style=self.style,
-                avg_down=self.avg_down,
                 with_cp=with_cp,
                 conv_cfg=conv_cfg,
                 norm_cfg=norm_cfg,
                 dcn=dcn,
-                plugins=stage_plugins,
-                init_cfg=block_init_cfg)
+                gcb=gcb,
+                gcb_blocks=stage_with_gcb[i],
+                nlgcb=nlgcb,
+                nlgcb_blocks=stage_with_nlgcb[i],
+                gen_attention=gen_attention,
+                gen_attention_blocks=stage_with_gen_attention[i],
+                nlb=nlb,
+                nlb_blocks=stage_with_nlb[i],
+                non_inplace=non_inplace,
+            )
             self.inplanes = planes * self.block.expansion
             layer_name = f'layer{i + 1}'
             self.add_module(layer_name, res_layer)
@@ -553,9 +796,9 @@ class ResNetDNL(BaseModule):
 
         return stage_plugins
 
-    def make_res_layer(self, **kwargs):
-        """Pack all blocks in a stage into a ``ResLayer``."""
-        return ResLayer(**kwargs)
+    # def make_res_layer(self, **kwargs):
+    #     """Pack all blocks in a stage into a ``ResLayerDNL``."""
+    #     return ResLayerDNL(**kwargs)
 
     @property
     def norm1(self):
@@ -655,6 +898,93 @@ class ResNetDNL(BaseModule):
                 # trick: eval have effect on BatchNorm only
                 if isinstance(m, _BatchNorm):
                     m.eval()
+
+
+def make_res_layer(block,
+                   inplanes,
+                   planes,
+                   blocks,
+                   stride=1,
+                   dilation=1,
+                   style='pytorch',
+                   with_cp=False,
+                   conv_cfg=None,
+                   norm_cfg=dict(type='BN'),
+                   dcn=None,
+                   gcb=None,
+                   gcb_blocks=[],
+                   nlgcb=None,
+                   nlgcb_blocks=[],
+                   gen_attention=None,
+                   gen_attention_blocks=[],
+                   nlb=None,
+                   nlb_blocks=[],
+                   non_inplace=False,
+                   ):
+    for i in range(len(nlb_blocks)):
+        if nlb_blocks[i] < 0:
+            nlb_blocks[i] = blocks + nlb_blocks[i]
+    for i in range(len(gcb_blocks)):
+        if gcb_blocks[i] < 0:
+            gcb_blocks[i] = blocks + gcb_blocks[i]
+    for i in range(len(nlgcb_blocks)):
+        if nlgcb_blocks[i] < 0:
+            nlgcb_blocks[i] = blocks + nlgcb_blocks[i]
+    downsample = None
+    if stride != 1 or inplanes != planes * block.expansion:
+        downsample = nn.Sequential(
+            build_conv_layer(
+                conv_cfg,
+                inplanes,
+                planes * block.expansion,
+                kernel_size=1,
+                stride=stride,
+                bias=False),
+            build_norm_layer(norm_cfg, planes * block.expansion)[1],
+        )
+
+    layers = []
+    layers.append(
+        block(
+            inplanes=inplanes,
+            planes=planes,
+            stride=stride,
+            dilation=dilation,
+            downsample=downsample,
+            style=style,
+            with_cp=with_cp,
+            conv_cfg=conv_cfg,
+            norm_cfg=norm_cfg,
+            dcn=dcn,
+            gcb=gcb if 0 in gcb_blocks else None,
+            nlgcb=nlgcb if 0 in nlgcb_blocks else None,
+            gen_attention=gen_attention if
+            (0 in gen_attention_blocks) else None,
+            nlb=nlb if 0 in nlb_blocks else None,
+            non_inplace=non_inplace
+        ))
+    inplanes = planes * block.expansion
+    for i in range(1, blocks):
+        layers.append(
+            block(
+                inplanes=inplanes,
+                planes=planes,
+                stride=1,
+                dilation=dilation,
+                style=style,
+                with_cp=with_cp,
+                conv_cfg=conv_cfg,
+                norm_cfg=norm_cfg,
+                dcn=dcn,
+                gcb=gcb if i in gcb_blocks else None,
+                nlgcb=nlgcb if i in nlgcb_blocks else None,
+                gen_attention=gen_attention if
+                (i in gen_attention_blocks) else None,
+                nlb=nlb if i in nlb_blocks else None,
+                non_inplace=non_inplace
+            ))
+
+    return nn.Sequential(*layers)
 
 
 # @MODELS.register_module()
