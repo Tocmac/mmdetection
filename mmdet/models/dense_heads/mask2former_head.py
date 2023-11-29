@@ -18,6 +18,8 @@ from ..layers import Mask2FormerTransformerDecoder, SinePositionalEncoding
 from ..utils import get_uncertain_point_coords_with_randomness
 from .anchor_free_head import AnchorFreeHead
 from .maskformer_head import MaskFormerHead
+from ..gffnets.gffnets import WiderResNetGFFDFPHead
+from ..gffnets.nn.mynn import initialize_weights, Norm2d
 
 
 @MODELS.register_module()
@@ -154,6 +156,9 @@ class Mask2FormerHead(MaskFormerHead):
         self.loss_cls = MODELS.build(loss_cls)
         self.loss_mask = MODELS.build(loss_mask)
         self.loss_dice = MODELS.build(loss_dice)
+
+        self.gff_head = WiderResNetGFFDFPHead(norm_layer=Norm2d)
+        initialize_weights(self.gff_head)
 
     def init_weights(self) -> None:
         for m in self.decoder_input_projs:
@@ -401,6 +406,17 @@ class Mask2FormerHead(MaskFormerHead):
         batch_size = x[0].shape[0]
         mask_features, multi_scale_memorys = self.pixel_decoder(x)
         # multi_scale_memorys (from low resolution to high resolution)
+
+        # gff output
+        # gff_input1, gff_input2, gff_input3 = multi_scale_memorys
+        # gff_input1 = gff_input1.permute(0, 2, 1).unsqueeze(-1)
+        # gff_input2 = gff_input2.permute(0, 2, 1).unsqueeze(-1)
+        # gff_input3 = gff_input3.permute(0, 2, 1).unsqueeze(-1)
+        # gff_inputs = [gff_input1, gff_input2, gff_input3]
+        dec1 = self.gff_head(multi_scale_memorys)
+        multi_scale_memorys = [dec1, dec1, dec1]
+
+
         decoder_inputs = []
         decoder_positional_encodings = []
         for i in range(self.num_transformer_feat_level):
@@ -419,6 +435,17 @@ class Mask2FormerHead(MaskFormerHead):
                 2).permute(0, 2, 1)
             decoder_inputs.append(decoder_input)
             decoder_positional_encodings.append(decoder_positional_encoding)
+
+        # # gff output
+        # gff_input1, gff_input2, gff_input3 = decoder_inputs
+        # gff_input1 = gff_input1.permute(0, 2, 1).unsqueeze(-1)
+        # gff_input2 = gff_input2.permute(0, 2, 1).unsqueeze(-1)
+        # gff_input3 = gff_input3.permute(0, 2, 1).unsqueeze(-1)
+        # gff_inputs = [gff_input1, gff_input2, gff_input3]
+        # dec1 = self.gff_head(gff_inputs)
+        # dec1 = dec1.flatten(2).permute(0, 2, 1)
+        # decoder_inputs = [dec1, dec1, dec1]
+
         # shape (num_queries, c) -> (batch_size, num_queries, c)
         query_feat = self.query_feat.weight.unsqueeze(0).repeat(
             (batch_size, 1, 1))

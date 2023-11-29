@@ -162,7 +162,7 @@ class MSDeformAttnPixelDecoder(BaseModule):
         spatial_shapes = []
         reference_points_list = []
         for i in range(self.num_encoder_levels):
-            level_idx = self.num_input_levels - i - 1
+            level_idx = self.num_input_levels - i - 1       # 3, 2, 1
             feat = feats[level_idx]
             feat_projected = self.input_convs[i](feat)
             feat_hw = torch._shape_as_tensor(feat)[2:].to(feat.device)
@@ -222,16 +222,17 @@ class MSDeformAttnPixelDecoder(BaseModule):
         # (batch_size, c, num_total_queries)
         memory = memory.permute(0, 2, 1)
 
-        # from low resolution to high resolution
+        # multi_scale_features from low resolution to high resolution
         outs = torch.split(memory, num_queries_per_level, dim=-1)
         outs = [
             x.reshape(batch_size, -1, spatial_shapes[i][0],
                       spatial_shapes[i][1]) for i, x in enumerate(outs)
         ]
 
+        # mask_feature
         for i in range(self.num_input_levels - self.num_encoder_levels - 1, -1,
                        -1):
-            x = feats[i]
+            x = feats[i]   # i=0
             cur_feat = self.lateral_convs[i](x)
             y = cur_feat + F.interpolate(
                 outs[-1],
