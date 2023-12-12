@@ -4,6 +4,13 @@
 
 <!-- [ALGORITHM] -->
 
+## multi card
+bash ./tools/dist_train.sh configs/mask2former/105_mask2former_r50_8xb2-lsj-50e_DSOD2.0_20000.py 4 --work-dir saved_logs/test/
+bash ./tools/dist_train_4_7.sh configs/mask_rcnn/105_mask-rcnn_r50_fpn_1x_coco_20000.py 4 --work-dir saved_logs/test/
+
+nohup bash ./tools/dist_train.sh configs/mask2former/105_mask2former_r50_8xb2-lsj-50e_DSOD2.0_20000.py 4 --work-dir saved_logs/DSOD3.0/mask2former > /ssd/wx/mmdetection/saved_logs/DSOD3.0/mask2former/output.txt 2>&1 &
+
+nohup bash ./tools/dist_train_4_7.sh configs/mask_rcnn/105_mask-rcnn_r50_fpn_1x_coco_20000.py 4 --work-dir saved_logs/DSOD3.0/mask_r_cnn > /ssd/wx/mmdetection/saved_logs/DSOD3.0/mask_r_cnn/output.txt 2>&1 &
 ## Abstract
 
 We present a conceptually simple, flexible, and general framework for object instance segmentation. Our approach efficiently detects objects in an image while simultaneously generating a high-quality segmentation mask for each instance. The method, called Mask R-CNN, extends Faster R-CNN by adding a branch for predicting an object mask in parallel with the existing branch for bounding box recognition. Mask R-CNN is simple to train and adds only a small overhead to Faster R-CNN, running at 5 fps. Moreover, Mask R-CNN is easy to generalize to other tasks, e.g., allowing us to estimate human poses in the same framework. We show top results in all three tracks of the COCO suite of challenges, including instance segmentation, bounding-box object detection, and person keypoint detection. Without bells and whistles, Mask R-CNN outperforms all existing, single-model entries on every task, including the COCO 2016 challenge winners. We hope our simple and effective approach will serve as a solid baseline and help ease future research in instance-level recognition.

@@ -1,3 +1,9 @@
+_base_ = [
+    '../_base_/models/mask-rcnn_r50_fpn.py',
+    '../_base_/datasets/coco_instance.py',
+    '../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py'
+]
+
 # model settings
 model = dict(
     type='MaskRCNN',
@@ -51,7 +57,7 @@ model = dict(
             in_channels=256,
             fc_out_channels=1024,
             roi_feat_size=7,
-            num_classes=80,
+            num_classes=1,
             bbox_coder=dict(
                 type='DeltaXYWHBBoxCoder',
                 target_means=[0., 0., 0., 0.],
@@ -70,7 +76,7 @@ model = dict(
             num_convs=4,
             in_channels=256,
             conv_out_channels=256,
-            num_classes=80,
+            num_classes=1,
             loss_mask=dict(
                 type='CrossEntropyLoss', use_mask=True, loss_weight=1.0))),
     # model training and testing settings
@@ -126,4 +132,79 @@ model = dict(
             max_per_img=100,
             mask_thr_binary=0.5)))
 
+# dataset settings
 
+# dataset_type = 'CocoDataset'
+# data_root = 'data/coco/'
+# dataset settings
+dataset_type = 'CocoDataset'
+data_root = '/data/wx/dataset/10/'
+# data_root_test = '/data/home/wangxu/datasets/SCD/LSCD/coco_style_oneclass/'
+metainfo = {
+  'classes': ('surface', ),
+  'palette': [
+        (220, 20, 60),
+    ]
+}
+backend_args = None
+train_pipeline = [
+    dict(type='LoadImageFromFile', backend_args=backend_args),
+    dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
+    dict(type='Resize', scale=(640, 480), keep_ratio=True),
+    dict(type='RandomFlip', prob=0.5),
+    dict(type='PackDetInputs')
+]
+test_pipeline = [
+    dict(type='LoadImageFromFile', backend_args=backend_args),
+    dict(type='Resize', scale=(640, 480), keep_ratio=True),
+    # If you don't have a gt annotation, delete the pipeline
+    dict(type='LoadAnnotations', with_bbox=True, with_mask=True),
+    dict(
+        type='PackDetInputs',
+        meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
+                   'scale_factor'))
+]
+
+
+train_dataloader = dict(
+    batch_size=4,
+    num_workers=4,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=True),
+    batch_sampler=dict(type='AspectRatioBatchSampler'),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        metainfo=metainfo,
+        ann_file='coco_annotations.json',
+        data_prefix=dict(img='train/'),
+        filter_cfg=dict(filter_empty_gt=True, min_size=32),
+        pipeline=train_pipeline,
+        backend_args=backend_args))
+val_dataloader = dict(
+    batch_size=2,
+    num_workers=2,
+    persistent_workers=True,
+    drop_last=False,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        metainfo=metainfo,
+        ann_file='coco_annotations.json',
+        data_prefix=dict(img='train/'),
+        test_mode=True,
+        pipeline=test_pipeline,
+        backend_args=backend_args))
+test_dataloader = val_dataloader
+
+val_evaluator = dict(
+    _delete_=True,
+    type='CocoMetric',
+    ann_file=data_root + 'coco_annotations.json',
+    metric=['bbox', 'segm'],
+    format_only=False,
+    backend_args={{_base_.backend_args}})
+test_evaluator = val_evaluator
+
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=5, val_interval=1)

@@ -4,6 +4,17 @@
 
 <!-- [ALGORITHM] -->
 
+## multi card
+bash ./tools/dist_train.sh configs/mask2former/105_mask2former_r50_8xb2-lsj-50e_DSOD2.0_20000.py 4 --work-dir saved_logs/test/
+bash ./tools/dist_train_4_7.sh configs/yolact/105_yolact_r50_1xb8-55e_coco_20000.py 4 --work-dir saved_logs/test/
+
+nohup bash ./tools/dist_train.sh configs/mask2former/105_mask2former_r50_8xb2-lsj-50e_DSOD2.0_20000.py 4 --work-dir saved_logs/DSOD3.0/mask2former > /ssd/wx/mmdetection/saved_logs/DSOD3.0/mask2former/output.txt 2>&1 &
+
+nohup bash ./tools/dist_train_2.sh configs/yolact/105_yolact_r50_1xb8-55e_coco_20000.py 4 --work-dir saved_logs/DSOD3.0/yolact/ > /ssd/wx/mmdetection/saved_logs/DSOD3.0/yolact/output.txt 2>&1 &
+
+
+
+
 ## Abstract
 
 We present a simple, fully-convolutional model for real-time instance segmentation that achieves 29.8 mAP on MS COCO at 33.5 fps evaluated on a single Titan Xp, which is significantly faster than any previous competitive approach. Moreover, we obtain this result after training on only one GPU. We accomplish this by breaking instance segmentation into two parallel subtasks: (1) generating a set of prototype masks and (2) predicting per-instance mask coefficients. Then we produce instance masks by linearly combining the prototypes with the mask coefficients. We find that because this process doesn't depend on repooling, this approach produces very high-quality masks and exhibits temporal stability for free. Furthermore, we analyze the emergent behavior of our prototypes and show they learn to localize instances on their own in a translation variant manner, despite being fully-convolutional. Finally, we also propose Fast NMS, a drop-in 12 ms faster replacement for standard NMS that only has a marginal performance penalty.

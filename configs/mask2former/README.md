@@ -5,12 +5,12 @@
 <!-- [ALGORITHM] -->
 
 # train
-python ./tools/train.py configs/mask2former/mask2former_r50_8xb2-lsj-50e_DSOD2.0_10.py --work-dir saved_logs/test/
+python ./tools/train.py configs/mask_rcnn/104_mask-rcnn_r50_fpn_1x_coco_10.py --work-dir saved_logs/test/
 
 python ./tools/train.py configs/polyphonic_video/poly_r50_cityscapes_1x.py --work-dir /data/home/wangxu/code/PolyphonicFormer-main/saved_logs/20230718/ --gpu-ids 2
 
 ## multi card
-bash ./tools/dist_train.sh configs/mask2former_dnl/mask2former_r50_dnl_8xb2-lsj-50e_DSOD2.0_10.py 4 --work-dir saved_logs/test/
+bash ./tools/dist_train.sh configs/mask2former/105_mask2former_r50_8xb2-lsj-50e_DSOD2.0_20000.py 4 --work-dir saved_logs/test/
 bash ./tools/dist_train.sh configs/mask2former_dnl/mask2former_r50_dnl_8xb2-lsj-50e_DSOD2.0.py 4 --work-dir saved_logs/DSOD2.0/mask2former_res50_dnl/
 
 ## nohup
